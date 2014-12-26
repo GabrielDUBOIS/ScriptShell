@@ -2,8 +2,9 @@
 
 ##                                     ##
 # SCRIPT DE GESTION DE BASES DE DONNÉES #
-# Description :                         #
+# Description :  branche test           #
 ##                                     ##
+# 
 
 ##                                                  ##
 # FONCTIONS DE GESTION DES INFORMATIONS DE CONNEXION #

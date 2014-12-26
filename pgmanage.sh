@@ -208,7 +208,6 @@ function test_db_exist
 { # Teste l'existance de la base de données à gérer
   # Dépendances :
   #   - Fonctions : set_pgpassfile, reset_pgpassfile
-
   declare -i i=0
   result_db=0
   set_pgpassfile 2>> ${archiveLog}

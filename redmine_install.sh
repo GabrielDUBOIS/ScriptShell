@@ -169,8 +169,8 @@ pid='tmp/pids/server.pid'
 # ok, this is hard now
 if [ -f \$pid ]; then
   echo '> killing old instance'
-    kill -TERM \"cat \$pid\"
-    rm \$pid
+  kill -TERM \"cat \$pid\"
+  rm \$pid
 fi
 bundle exec ruby script/rails server webrick -e production -b ${redmine_ip} \
 -p ${redmine_port} -d > redmine.log"
@@ -219,18 +219,18 @@ function installation
   install_dependances &&
   install_postgresql-client &&
   create_redmine_user
-  ## Deuxième phase dans l'env. utilisateur
-  #su $redmine_user
-  #cd ~
-  su $redmine_user -c config_proxy
-  su $redmine_user -c wget_redmine
-  su $redmine_user -c config_env_bash
-  su $redmine_user -c config_database_connection
-  su $redmine_user -c manage_database
-  su $redmine_user -c source ~/.bashrc
-  su $redmine_user -c install_redmine
-  su $redmine_user -c create_file_start
-  su $redmine_user -c reset_proxy
+  # Deuxième phase dans l'env. utilisateur
+  cd /home/${redmine_user}
+  su ${redmine_user} -c config_proxy
+  su ${redmine_user} -c wget_redmine
+  su ${redmine_user} -c config_env_bash
+  su ${redmine_user} -c config_database_connection
+  su ${redmine_user} -c manage_database
+  su ${redmine_user} -c source ~/.bashrc
+  su ${redmine_user} -c install_redmine
+  su ${redmine_user} -c create_file_start
+  su ${redmine_user} -c reset_proxy
+  cd ~
 }
 
 function __init_var

@@ -9,7 +9,9 @@
 # FONCTIONS DE GESTION DES INFORMATIONS DE CONNEXION #
 ##                                                  ##
 function set_pgpassfile
-{ # Prépare le fichier de connexion .pgpass
+{ 
+  # Prépare le fichier de connexion .pgpass
+
   PGPASSFILE_OLD=$PGPASSFILE
   PGPASSFILE="$HOME/.pgpass"
   if [ -f ${PGPASSFILE} ] ; then
@@ -23,7 +25,8 @@ function set_pgpassfile
 }
 
 function reset_pgpassfile
-{ # restaure le fichier de connexion ou le supprime
+{
+  # restaure le fichier de connexion ou le supprime
 
   if [ -f ${PGPASSFILE}.old ] ; then
     mv ${PGPASSFILE}.old ${PGPASSFILE}
@@ -38,7 +41,8 @@ function reset_pgpassfile
 # FONCTIONS DE TRAITEMENT ET D'EXÉCUTION DE CODES #
 ##                                               ##
 function sql_apply
-{ # Applique le code SQL transmis en argument
+{
+  # Applique le code SQL transmis en argument
   # Journalise les erreurs SQL
   # Dépendances :
   #   - Fonctions : set_pgpassfile, reset_pgpassfile
@@ -56,7 +60,8 @@ function sql_apply
 }
 
 function manage_sql_error
-{ # Affiche les erreurs rencontrées lors de la dernière exécution
+{
+  # Affiche les erreurs rencontrées lors de la dernière exécution
 
   tail -n 2 ${errorLog}
   sql="\n#  => ${sql}\n#  => erreur lors de l'exécution"
@@ -67,7 +72,8 @@ function manage_sql_error
 # FONCTIONS DE GESTION DES COMPTES UTILISATEURS #
 ##                                             ##
 function test_user_info
-{ # Teste si les propriétées du compte utilisateur ont été définies
+{
+  # Teste si les propriétées du compte utilisateur ont été définies
 
   if [ "${db_user[1]}" = "${noDefine}" ] ||
   ([ "${db_user_password[1]}" = "${noDefine}" ] && [ ${1} != DROP ])
@@ -81,7 +87,8 @@ function test_user_info
 }
 
 function test_user_exist
-{ # Teste l'existance du compte utilisateur
+{
+  # Teste l'existance du compte utilisateur
   # Dépendances :
   #   - Fonctions : set_pgpassfile, reset_pgpassfile
 
@@ -112,7 +119,8 @@ function test_user_exist
 }
 
 function create_user
-{ # Crée un compte utilisateur sur le SGDB cible
+{
+  # Crée un compte utilisateur sur le SGDB cible
   # Dépendances :
   #   - Fonctions: test_user_info, sql_apply
 
@@ -126,7 +134,8 @@ function create_user
 }
 
 function alter_user_password
-{ # Modifie le mot de passe du compte sur le SGDB cible
+{
+  # Modifie le mot de passe du compte sur le SGDB cible
   # Dépendances :
   #   - Fonctions: test_user_info, sql_apply
 
@@ -140,7 +149,8 @@ function alter_user_password
 }
 
 function delete_user
-{ # Supprime un compte utilisateur sur le SGDB cible
+{
+  # Supprime un compte utilisateur sur le SGDB cible
   # Dépendances :
   #   - Fonctions: test_user_info, sql_apply
 
@@ -154,7 +164,8 @@ function delete_user
 }
 
 function check_user
-{ # Gère le compte utilisateur sur le SGDB cible
+{
+  # Gère le compte utilisateur sur le SGDB cible
   # Dépendances :
   #   - Fonctions: create_user, alter_user_pwd, delete_user
 
@@ -205,7 +216,8 @@ function check_user
 ##                                         ##
 
 function test_db_exist
-{ # Teste l'existance de la base de données à gérer
+{
+  # Teste l'existance de la base de données à gérer
   # Dépendances :
   #   - Fonctions : set_pgpassfile, reset_pgpassfile
   declare -i i=0
@@ -232,7 +244,8 @@ function test_db_exist
 }
 
 function test_db_info
-{ # Vérifie si les informattions du compte sont fournies
+{
+  # Vérifie si les informattions du compte sont fournies
 
   # Test de validité des arguments
   if [ "${db_name[1]}" = "${noDefine}" ] ||
@@ -247,7 +260,8 @@ function test_db_info
 }
 
 function create_db
-{ # Crée une base de données avec le compte db_user pour propriétaire
+{
+  # Crée une base de données avec le compte db_user pour propriétaire
   # sur le SGDB cible
   # Dépendances :
   #   - Fonctions : test_db_info, sql_apply
@@ -261,7 +275,8 @@ function create_db
 }
 
 function delete_db
-{ # Supprime une base de données sur le SGDB cible
+{
+  # Supprime une base de données sur le SGDB cible
   # Dépendances :
   #   - Fonctions : test_db_info, sql_apply
 
@@ -273,7 +288,8 @@ function delete_db
 }
 
 function alter_db_owner
-{ # Modifie le propriétaire d'une base de données sur le SGDB cible
+{
+  # Modifie le propriétaire d'une base de données sur le SGDB cible
   # Dépendances :
   #   - Fonctions : test_db_info, sql_apply
 
@@ -285,7 +301,8 @@ function alter_db_owner
 }
 
 function check_db
-{ # Gère la base de données sur le SGDB cible
+{
+  # Gère la base de données sur le SGDB cible
   # Dépendances :
   #   - Fonctions: create_db, alter_db_owner, delete_db
 
@@ -339,7 +356,8 @@ function check_db
 ##                              ##
 
 function __init_var
-{ # Initialise les variables globales de travail
+{
+  # Initialise les variables globales de travail
 
   # Valeurs par default des propriétés
   noDefine='Non Défini'
@@ -367,7 +385,8 @@ function __init_var
 ## GESTION DU MODE DIRECT ##
 
 function direct_mode
-{ # Exécute les commandes passées en argument au regard des options
+{
+  # Exécute les commandes passées en argument au regard des options
 
   # Réinitialisation du fichier temporaire de log
   echo '' > ${errorLog}
@@ -407,7 +426,8 @@ function direct_mode
 ## GESTION DU MODE INTERACTIF ##
 
 function __menu_db_user
-{ # Gère les opérations sur les comptes utilisateurs
+{
+  # Gère les opérations sur les comptes utilisateurs
   # Dépendances :
   #   - Fonctions: create_user, delete_user, alter_user_password
   #                manage_sql_error
@@ -494,7 +514,8 @@ function __menu_db_user
 }
 
 function __menu_db
-{ # Gère les opérations sur les bases de données
+{
+  # Gère les opérations sur les bases de données
   # Dépendances :
   #   - Fonctions: create_db, delete_db, alter_db_owner, test_user_exist
   #                manage_sql_error
@@ -598,7 +619,8 @@ function __menu_db
 }
 
 function interactive_mode
-{ # Gère les interactions utilisateur / script au travers de menus de sélection
+{
+  # Gère les interactions utilisateur / script au travers de menus de sélection
   # Dépendances :
   #   - Fonctions: __menu_db_user, __menu_db, sql_apply
 
@@ -709,7 +731,8 @@ function interactive_mode
 }
 
 function execution_mode
-{ # Détermine le mode d'exécution du script : intéractif | direct
+{
+  # Détermine le mode d'exécution du script : intéractif | direct
   # Dépendances :
   #   - Fonctions: __init_var, interactive_mode, direct_mode
 

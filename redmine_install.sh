@@ -2,10 +2,12 @@
 
 function install_dependances
 {
+  # Installation des dépendances sous Debian Wheezy
+
   packages='build-essential bison openssl curl git-core zlib1g '
   packages+='zlib1g-dev screen libruby libcurl4-openssl-dev libssl-dev '
-  packages+='libmysqlclient-dev libxml2-dev libmagickwand-dev libpq5 libpq-dev '
-  packages+='rbenv ruby-build ruby-dev'
+  packages+='libmysqlclient-dev libxml2-dev libmagickwand-dev libpq5 libpq-dev'
+  packages+=' rbenv ruby-build ruby-dev'
   # On effectue une simulation '-s' avant installation des dépendances
   apt-get update && apt-get upgrade -y &&
   apt-get install -ys $packages && apt-get install -y $packages &&
@@ -14,7 +16,9 @@ function install_dependances
 }
 
 function install_postgresql-client
-{ # Installation du client de postgresql
+{
+  # Installation du client de postgresql sous Debian Wheezy
+
   # on vérifie préalablement sa présence
   dpkg --list postresql-client > /dev/null 2>&1 
   [ $? = 1 ] && apt-get install -y postgresql-client
@@ -22,7 +26,10 @@ function install_postgresql-client
 }
 
 function manage_database
-{ # Lance le script de gestion des comptes et bases de données
+{
+  # Lance le script de gestion des comptes et bases de données
+  # Dépendance :
+  #   - Script : ./pgmanage.sh
 
   # Crée le compte utilisateur et la base de données
   ./pgmanage.sh -h ${db_host} -p 5432 -U postgres -W ${db_postgres_password} \
@@ -32,6 +39,8 @@ function manage_database
 
 function config_proxy
 {
+  # Configure le proxy
+
   if [ $proxy_url ] ; then
     export http_proxy=$proxy_url
     export https_proxy=$proxy_url
@@ -40,12 +49,16 @@ function config_proxy
 
 function reset_proxy
 {
+  # Réinitialise le proxy
+
   export http_proxy=''
   export https_proxy=''
 }
 
 function wget_redmine
 {
+  # Récupère, décompresse et renomme l'archive de l'application
+
   cd /$HOME
   wget -O redmine.tgz http://www.redmine.org/releases/redmine-2.5.1.tar.gz
   if [ $? -eq 0 ] ; then
@@ -68,7 +81,9 @@ function wget_redmine
 }
 
 function config_env_bash
-{ # Ajout des variables d'environnement dans l'instance d'exécution
+{
+  # Ajoute des variables d'environnement pour l'instance d'exécution
+
   local content="# rbenv - setting
 PATH=\"\$HOME/.rbenv/versions/1.9.3-p194/bin:\$PATH\"
 export PATH
@@ -85,8 +100,10 @@ export RAILS_ENV"
 }
 
 function config_database_connection
-{ # Création du fichier de configuration des paramètres de connexion à la base
+{
+  # Crée le fichier de configuration des paramètres de connexion à la base
   # de données de l'instance.
+
   cd $HOME/redmine/
   config_file_database="$HOME/redmine/config/database.yml"
   touch $config_file_database
@@ -101,13 +118,19 @@ function config_database_connection
 
 function install_redmine
 {
+  # Installe l'application et ses dépendances dans un environnement ruby local
+
   function install_ruby
   {
+    # Installe localement l'environnement ruby recommandé
+
     rbenv install 1.9.3-p194 && return 0 || return 1
   }
 
   function install_gems
   {
+    # Installe les gems ruby (prérequis)
+
     gem install pg -v '0.17.1'
     gem install bundler
     gem install json -v '1.8.1'
@@ -117,13 +140,17 @@ function install_redmine
 
   function install_bundles
   {
+    # Configure et initialise l'application
+
     bundle install --without development test rmagick
     bundle exec rake db:migrate
     bundle exec rake generate_secret_token &&
     REDMIN_LANG=fr bundle exec rake redmine:load_default_data
   }
+
   cd $HOME/redmine
   install_ruby
+  # Mise en place de l'environnement ruby local de l'instance d'exécution
   rbenv local 1.9.3-p194
   install_gems
   install_bundles 
@@ -131,6 +158,9 @@ function install_redmine
 
 function create_file_start
 {
+  # Crée le fichier de lancement de l'application
+
+  # Définition du contenu du fichier
   local content="#!/bin/bash
 # start_redmine.sh, place this inside your redmine-folder
 RAILS_ENV='${redmine_env}'
@@ -144,12 +174,17 @@ if [ -f \$pid ]; then
 fi
 bundle exec ruby script/rails server webrick -e production -b ${redmine_ip} \
 -p ${redmine_port} -d > redmine.log"
+
+  # Création du fichier
   echo "${content}" > start_redmine_${USER}.sh
   chmod +x start_redmine_${USER}.sh
 }
 
 function create_redmine_user
 {
+  # Crée l'instance / le compte système d'exécution de l'application
+
+  # Le compte d'instance ne doit pas être root
   id $redmine_user
   [ $? -ne 0 ] &&
   [ $UID -eq 0 ] && [ $redmine_user != "root" ] &&
@@ -158,14 +193,24 @@ function create_redmine_user
 
 function export_function
 {
-   for i in "${function_export[@]}"
-   do
-      export -f $i
-   done  
+  # Exporte les fonctions autorisées
+
+  for i in "${function_export[@]}"
+  do
+     export -f $i
+  done  
 }
 
 function installation
 {
+  # Lance l'installation de l'application
+  # Dépendances :
+  #   - Fonctions : install_dependances, install_postgresql-client,
+  #                 create_redmine_user,config_proxy, wget_redmine,
+  #                 config_env_bash, config_database_connection,
+  #                 manage_database, install_redmine, create_file_start,
+  #                 reset_proxy
+
   # Première phase en tant que root
   if [ $UID -ne 0 ] ; then
     echo "Vous devez commencez l'installation en tant que root."
@@ -189,13 +234,31 @@ function installation
 }
 
 function __init_var
-{ # Initialise les variables globales de travail
-function_export=("config_poxy" "wget_redmine" "config_database_connection" \
-"manage_database" "install_redmine" "create_file_start" "reset_proxy"}
+{
+  # Initialise les variables globales de travail
+
+  # Export et initialisation des variables globales
+  export proxy_url=''
+  export redmine_env='production'
+  export redmine_user="${USER}"
+  export db_adapter='postgresql'
+  export db_name="redmine_${USER}"
+  export db_host='localhost'
+  export redmine_ip='127.0.0.1'
+  export redmine_port='3000'
+  export db_user="$USER"
+  export db_user_password='azerty'
+  export db_postgres_password=''
+  # Liste des fonctions autorisées à l'export
+  function_export=("config_poxy" "wget_redmine" "config_database_connection" \
+  "manage_database" "install_redmine" "create_file_start" "reset_proxy")
 }
 
 function installation_menu
 {
+  # Menu d'installation de l'application
+  # Définit les propriétés de l'installation et de l'applications
+
   local opt1="Chaîne de connexion Proxy  => $proxy_url"
   local opt2="Environement d'éxecution   => $redmine_env"
   local opt3="Compte d'instance redmine  => $redmine_user"
@@ -241,19 +304,12 @@ function installation_menu
 }
 
 function mode_selection
-{ # Fonctionnement en ligne de commande avec passage d'options
-  export proxy_url=''
-  export redmine_env='production'
-  export redmine_user="${USER}"
-  export db_adapter='postgresql'
-  export db_name="redmine_${USER}"
-  export db_host='localhost'
-  export redmine_ip='127.0.0.1'
-  export redmine_port='3000'
-  export db_user="$USER"
-  export db_user_password='azerty'
-  export db_postgres_password=''
-  
+{
+  # Définit le mode d'installation de l'application (Interactif ; Direct)
+  # Dépendances :
+  #   - Fonctions : installation_menu, installation
+
+  # Initialisation des variables locales
   local _interMode=0
   local _directMode=0
   
@@ -295,6 +351,3 @@ function mode_selection
 }
 __init_var
 mode_selection $@
-
-
-

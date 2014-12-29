@@ -357,7 +357,7 @@ function check_db
 
 function __init_var
 {
-  # Initialise les variables globales de travail
+  # Initialise les variables globales de travail *[1]
 
   # Valeurs par default des propriétés
   noDefine='Non Défini'
@@ -736,7 +736,7 @@ function execution_mode
   # Dépendances :
   #   - Fonctions: __init_var, interactive_mode, direct_mode
 
-  # Initialisation des variables de travail globales
+  # Initialisation des variables
   __init_var
   local _interMode=0
   local _directMode=0
@@ -775,7 +775,7 @@ function execution_mode
     _directMode=1
   fi
   # Demande d'exécution directe ?
-  if [ $_directMode = 1 ] ; then
+  
     direct_mode $@
     [ $_error = 0 ] && return 0 || return 1      
   fi

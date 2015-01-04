@@ -259,6 +259,19 @@ function test_db_info
   return 0
 }
 
+function test_admin_db_info
+{
+  if [ "${db_admin_password[1]}" = "${noDefine}" ]
+    then
+      msg="Le mot de passe ${db_admin_password[1]}"
+      msg+=" du compte d'administration ${db_admin[1]} est incorrect !"
+      echo "${msg}"
+      read
+      return 1
+  fi
+  return 0
+}
+
 function create_db
 {
   # Crée une base de données avec le compte db_user pour propriétaire
@@ -379,7 +392,7 @@ function __init_var
   # Liste des fonctions autorisées en mode direct
   direct_function=("create_user" "delete_user" "alter_user_password" \
   "check_user" "test_user_exist" "create_db" "delete_db" "alter_db_owner" \
-  "test_db_exist")
+  "test_db_exist" "check_db")
 }
 
 ## GESTION DU MODE DIRECT ##
@@ -390,7 +403,6 @@ function direct_mode
 
   # Réinitialisation du fichier temporaire de log
   echo '' > ${errorLog}
-  _error=0
   # Teste si les informations de connexion au SGDB sont définies
   if [ "${db_host[1]}" = "${noDefine}" ] ||
   [ "${db_admin_password[1]}" = "${noDefine}" ]
@@ -403,22 +415,26 @@ function direct_mode
   fi
   # Exécute les commandes passées en arguments
   for cmd in $@ ; do
+    _error=0
+    echo "Test de la commende $cmd"
     # Vérifier que la méthode appelée est autorisée
     for c in "${direct_function[@]}" ; do
-      if [ $cmd = $c ] ; then
+      echo "avec ${c}" ; read 
+      if [ "${cmd}" = "${c}" ] ; then
         _error=0
-        break
+        break 1
       else
         _error=1
       fi
     done
-    if [ "${_error}" = 0 ] ; then
+    if [ $_error = 0 ] ; then
       # Exécution de la méthode autorisée
+      echo "exécution de ${cmd}"
       eval "${cmd}" || cat ${errorLog}
+    else
+      echo "La méthode '${cmd}' est non autorisée en mode direct."
+      return 1
     fi
-    [ "${_error}" = 1 ] &&
-    echo "Le méthode '${cmd}' est non autorisée en mode direct." &&
-    return 1
   done
   return 0
 }
@@ -630,7 +646,7 @@ function interactive_mode
   local opt1="Adresse ou FQDN de l'hôte du SGDB  => ${db_host[1]},"
   local opt2="Port d'écoute du SGDB              => ${db_port[1]},"
   local opt3="Compte d'administration            => ${db_admin[1]},"
-  local opt4="Mot de passe du compte ${db_admin[1]:=}"
+  local opt4="Mot de passe du compte ${db_admin[1]}"
   local opt4+="    => ${db_admin_password[1]},"
   local opt5="Gestion des comptes utilisateurs,"
   local opt6="Gestion des bases de données,"
@@ -673,44 +689,23 @@ function interactive_mode
         db_admin_password[1]=${r:=$v}
         return 0 ;;
       "$opt5" ) # Sélection du menu de gestion des comptes
-      if [ "${db_admin_password[1]}" = "${noDefine}" ]
-        then
-          msg="Le mot de passe ${db_admin_password[1]}"
-          msg+=" du compte d'administration ${db_admin[1]} est incorrect !"
-          echo "${msg}"
-          read
-          return 0
-        fi
+        test_admin_db_info || return 0
         while true ; do
           __menu_db_user
           [ $_end = 1 ] && break
         done
         _end=0
         return 0 ;;
-      "$opt6" )
-        if [ "${db_admin_password[1]}" = "${noDefine}" ]
-        then
-          msg="Le mot de passe ${db_admin_password[1]}"
-          msg+=" du compte d'administration ${db_admin[1]} est incorrect !"
-          echo "${msg}"
-          read
-          return 0
-        fi
+      "$opt6" ) # Sélection du menu de gestion des bases
+        test_admin_db_info || return 0
         while true ; do
           __menu_db
           [ $_end = 1 ] && break
         done
         _end=0
         return 0 ;;
-      "$opt7" ) # Sélection du menu de gestion des bases
-        if [ "${db_admin_password[1]}" = "${noDefine}" ]
-        then
-          msg="Le mot de passe ${db_admin_password[1]}"
-          msg+=" du compte d'administration ${db_admin[1]} est incorrect !"
-          echo "${msg}"
-          read
-          return 0
-        fi
+      "$opt7" )
+        test_admin_db_info || return 0
         msg="Veuillez saisir le code SQL à appliquer : "
         echo -e "${msg}" ; read r
         sql_apply "$r" && return 0 ;;
@@ -774,8 +769,8 @@ function execution_mode
   else
     _directMode=1
   fi
+  if [ $_directMode = 1 ] ; then
   # Demande d'exécution directe ?
-  
     direct_mode $@
     [ $_error = 0 ] && return 0 || return 1      
   fi

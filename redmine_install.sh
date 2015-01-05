@@ -3,40 +3,50 @@
 function install_dependances
 {
   # Installation des dépendances sous Debian Wheezy
-  clear
+  # clear
   local log='install_dependances.log'
   touch $log
   # Mise à jour de la distribution
-  echo "Mise à jour de la distribution. Journal des erreurs => ${log}"
-  (apt-get update && apt-get upgrade -y) 2> $log
+  ${TEST[1]} &&
+  echo "Mise à jour de la distribution. Journal des erreurs => ${log}" &&
+  echo "Appuyer sur 'Entrée' pour continuer !"
+  (apt-get update && apt-get upgrade -y) >$log 2>&1
   
   for package in ${wheezy_dep[@]} ; do
     # on vérifie préalablement la présence du paquet sur le système
-    dpkg --list ${package} 2> $log
+    dpkg --list ${package} >>$log 2>&1
     # on installe après une simulation et s'il est absent du système
     if [ $? = 1 ] ; then
+      ${TEST[1]} &&
       echo "Installation du paquet ${package}. Journal des erreurs => ${log}"
-      (apt-get install -ys ${package} && apt-get install -y) 2>> $log
-      [ $? = 1 ] && (echo "Erreur lors de l'installation." ; return 1)
+      (apt-get install -ys ${package} && apt-get install -y ${package}) \
+      >>$log 2>&1
+      [ $? = 1 ] && echo "Erreur lors de l'installation." && return 1
     fi
   done
-  echo "Installation des dépendances réussie. Effacement du journal ${log}"
-  rm $log
+  ${TEST[1]} &&
+  echo "Installation des dépendances réussie. Effacement du journal ${log}" &&
+  echo "Appuyer sur 'Entrée' pour continuer !" && read
+  [ -e $log ] && rm $log
   return 0
 }
 
 function install_postgresql-client
 {
   # Installation du client de postgresql sous Debian Wheezy
-  clear
   local log='install_postgresql-client.log'
   # on vérifie préalablement sa présence
-  dpkg --list postresql-client > /dev/null 2> $log
-  echo "Installation du client postgresql. Journal des erreurs => ${log}"
-  [ $? = 1 ] && apt-get install -y postgresql-client 2> $log
-  [ $? = 1 ] && (echo "Erreur lors de l'installation." ; return 1)
-  echo "Installation réussie. Effacement du journal ${log}"
-  rm $log
+  ${TEST[1]} &&
+  echo "Installation du client postgresql. Journal des erreurs => ${log}" &&
+  echo "Appuyer sur 'Entrée' pour continuer !" 
+  dpkg --list postresql-client >$log 2>&1
+  [ $? = 1 ] && (apt-get install -ys postgresql-client && \
+  apt-get install -y postgresql-client) >> $log 2>&1
+  [ $? = 1 ] && echo "Erreur lors de l'installation." && return 1
+  ${TEST[1]} &&
+  echo "Installation réussie. Effacement du journal ${log}" &&
+  echo "Appuyer sur 'Entrée' pour continuer !"
+  [ -e $log ] && rm $log
   return 0
 }
 
@@ -45,22 +55,25 @@ function manage_database
   # Lance le script de gestion des comptes et bases de données
   # Dépendance :
   #   - Script : ./pgmanage.sh
-  clear
   log='manage_database.log'
   msg="Création du compte et de sa base de données. Appel du script pgmanage.sh"
-  msg+="Journal des erreurs => ${log}"
-  echo  $msg
-  echo $PATH_pgManage
+  msg+="\nJournal des erreurs => ${log}"
+  ${TEST[1]} &&
+  echo -e $msg
   if [ -e "$PATH_pgManage" ] ; then 
-    $PATH_pgManage -h ${db_host[1]} -p 5432 -U ${db_admin[1]} \
+    ($PATH_pgManage -h ${db_host[1]} -p 5432 -U ${db_admin[1]} \
     -W ${db_admin_password[1]} -d ${db_name[1]} -u ${db_user[1]} \
-    -w ${db_user_password[1]} 'check_user' 'check_db' 2> $log
-    [ $? = 1 ] && (echo "Erreur lors du processus." ; return 1)
-    echo "Installation réussie. Effacement du journal ${log}"
+  -w ${db_user_password[1]} 'check_user' 'check_db') >$log 2>&1
+    [ $? = 1 ] && echo "Erreur lors du processus." && return 1
+    ${TEST[1]} &&
+    echo "Installation réussie. Effacement du journal ${log}" &&
+    echo "Appuyer sur 'Entrée' pour continuer !"
     rm $log
     return 0
   else
-    echo "Le script './pgmanage.sh' n'est pas présent. Arrêt du processus."
+    ${TEST[1]} &&
+    echo "Le script './pgmanage.sh' n'est pas présent. Arrêt du processus." &&
+    echo "Appuyer sur 'Entrée' pour continuer !"
     return 1
   fi
 }
@@ -68,18 +81,20 @@ function manage_database
 function config_proxy
 {
   # Configure le proxy
-  
+  ${TEST[1]} &&
   echo "Configuration du proxy path"
   if [ $proxy_url[1] ] ; then
     export http_proxy=${proxy_url[1]}
     export https_proxy=${proxy_url[1]}
+  ${TEST[1]} &&
+  echo 'PROXY : ' $http_proxy
   fi
 }
 
 function reset_proxy
 {
   # Réinitialise le proxy
-  
+  ${TEST[1]} &&
   echo "Réinitialisation du proxy"
   export http_proxy=''
   export https_proxy=''
@@ -88,18 +103,20 @@ function reset_proxy
 function wget_redmine
 {
   # Récupère, décompresse et renomme l'archive de l'application
-  clear
+  # clear
   local log='wget_redmine.log'
-  cd /$HOME
-  echo "Téléchargement de redmine-${version}. Journal des erreurs => ${log}"
-  wget -O redmine.tgz http://www.redmine.org/releases/redmine-${version}.tar.gz\
-  2> $log
+  cd $HOME
+  ${TEST[1]} &&
+  echo "Téléchargement de redmine-${version}. Journal des erreurs => ${log}" &&
+  echo "Appuyer sur 'Entrée' pour continuer ! wget -O redmine.tgz http://www.redmine.org/releases/redmine-${version}.tar.gz"
+  wget -O redmine.tgz http://www.redmine.org/releases/redmine-${version}.tar.gz \
+  >$log 2>&1
   if [ $? -eq 0 ] ; then
     echo "Décompression de l'archive."
-    tar xzf redmine.tgz  > /dev/null 2> $log
+    tar xzf redmine.tgz  >>$log 2>&1
     if [ $? -eq 0 ] ; then
       echo "Dossier de destination => ./redimine"
-      mv redmine-${version} redmine  > /dev/null 2> $log
+      mv redmine-${version} redmine  >>$log 2>&1
       if [ $? -ne 0 ] ; then
         echo "Impossible de renommer le dossier d'installation"
         return 1
@@ -112,38 +129,49 @@ function wget_redmine
     echo "Impossible de télécharger l'archive sur http://www.redmine.org"
     return 1
   fi
-  rm $log
+  ${TEST[1]} &&
+  echo "Téléchargement / Installation réussie. Effacement du journal ${log}" &&
+  echo "Appuyer sur 'Entrée' pour continuer !"
+  [ -e $log ] && rm $log
   return 0
 }
 
 function config_env_bash
 {
   # Ajoute des variables d'environnement pour l'instance d'exécution
-  clear
-  local conf="\n# rbenv - setting"
-  conf+="\nPATH=\$HOME/.rbenv/versions/${rbenv_version}/bin:\$PATH"
-  conf+="\nexport PATH"
-  conf+="\n# to detect .rbenv-version"
-  conf+="\neval '\$(rbenv init -)'"
-  conf+="\nRAILS_ENV='${redmine_env[1]}'"
-  conf+="\export RAILS_ENV"
   echo "Modification du fichier ~/.bashrc"
-  echo -e "${conf}" >> ~/.bashrc
-  # chargement de l'environement
-  source ~/.bashrc
+  local conf="\n# rbenv - setting"
+  conf="PATH=\"\$HOME/.rbenv/versions/${rbenv_version}/bin:\$PATH\""
+  echo "$conf" >> ~/.bashrc
+  eval "$conf"
+  conf="export PATH"
+  echo "$conf" >> ~/.bashrc
+  eval "$conf"
+  conf="# to detect .rbenv-version"
+  echo "$conf" >> ~/.bashrc
+  conf="eval \"\$(rbenv init -)\""
+  echo "$conf" >> ~/.bashrc
+  # eval '$(rbenv init -)'
+  conf="RAILS_ENV='${redmine_user[1]}_${redmine_env[1]}'"
+  echo "$conf" >> ~/.bashrc
+  eval "$conf"
+  conf="export RAILS_ENV"
+  echo "$conf" >> ~/.bashrc
+  eval "$conf"
+  read
+  return 0
 }
 
 function config_database_connection
 {
   # Crée le fichier de configuration des paramètres de connexion à la base
   # de données de l'instance.
-  clear
   cd ${HOME}
   config_file_database="$HOME/redmine/config/database.yml"
   echo "Configuration de la connexion à la base de données"
   echo "Création du fichier ${config_file_database}"
   touch $config_file_database
-  local conf="\n${redmine_env[1]}:"
+  local conf="\n${redmine_user[1]}_${redmine_env[1]}:"
   conf+="\n  adapter: ${db_adapter[1]}"
   conf+="\n  database: ${db_name[1]}"
   conf+="\n  host: ${db_host[1]}"
@@ -159,20 +187,23 @@ function install_redmine
   function install_ruby
   {
     # Installe localement l'environnement ruby recommandé
+    ${TEST[1]} &&
     echo "Installation de l'environnement ruby (${rbenv_version})."
-    rbenv install ${rbenv_version} > /dev/null 2> $log \
-    && return 0 || return 1
+    rbenv install ${rbenv_version} >$log 2>&1 \
+    # && return 0 || return 1
+    return 0
   }
 
   function install_gems
   {
     # Installe les gems ruby (prérequis)
+    ${TEST[1]} &&
     echo "Installation des gems ruby."
-    gem install pg -v '0.17.1' > /dev/null 2> $log
+    gem install pg -v '0.17.1' >>$log 2>&1
     [ $? = 1 ] && return 1
-    gem install bundler > /dev/null 2> $log
+    gem install bundler >>$log 2>&1
     [ $? = 1 ] && return 1
-    gem install json -v '1.8.1' > /dev/null 2> $log
+    gem install json -v '1.8.1' >>$log 2>&1
     [ $? = 1 ] && return 1
     return 0
   }
@@ -181,31 +212,39 @@ function install_redmine
   {
     # Configure et initialise l'application
     # installation des bundles redmine
-    bundle install --without development test rmagick > /dev/null 2> $log
+    bundle install --without development test rmagick >>$log 2>&1
     [ $? = 1 ] && return 1
+    ${TEST[1]} &&
     echo -e "\tInitialisation de la base de données."
-    bundle exec rake db:migrate > /dev/null 2> $log
+    bundle exec rake db:migrate >>$log 2>&1
     [ $? = 1 ] && return 1
+    ${TEST[1]} &&
     echo -e "\tGénération de la clé sercête."
-    bundle exec rake generate_secret_token > /dev/null 2> $log
+    bundle exec rake generate_secret_token >>$log 2>&1
     [ $? = 1 ] && return 1
+    ${TEST[1]} &&
     echo -e "\tInitialisation des locales"
-    REDMIN_LANG=fr bundle exec rake redmine:load_default_data \
-    > /dev/null 2> $log
+    REDMINE_LANG=fr bundle exec rake redmine:load_default_data
     [ $? = 1 ] && return 1
     return 0
   }
-  clear
+  
   local log='install_redmine.log'
-  echo "Installation de l'environnement et des composants."
-  echo "Journal des erreurs => ${log}"
-  cd $HOME
+  ${TEST[1]} &&
+  echo "Installation de l'environnement et des composants." &&
+  echo "Journal des erreurs => ${log}" && 
+  echo "Appuyer sur 'Entrée' pour continuer !"
+  cd $HOME/redmine
   install_ruby || return 1
+  ${TEST[1]} &&
   echo "Initialisation de l'environnement ruby locale" 
-  rbenv local ${rbenv_version} || return 1
+  rbenv local ${rbenv_version} >>$log 2>&1 || return 1
   install_gems || return 1
   install_bundles  || return 1
-  rm $log
+  [ -e $log ] && rm $log
+  chmod -R ${redmine_user[1]}:${redmine_user[1]} \
+        ${HOME}/${redmine_user[1]}/redmine
+  return 0
 }
 
 function create_file_start
@@ -215,7 +254,7 @@ function create_file_start
   # Définition du contenu du fichier
   local conf="#!/bin/bash"
   conf+="\n# start_redmine.sh, place this inside your redmine-folder"
-  conf+="\nRAILS_ENV='${redmine_env[1]}'"
+  conf+="\nRAILS_ENV='${redmine_user[1]}_${redmine_env[1]}'"
   conf+="\nexport RAILS_ENV"
   conf+="\npid='tmp/pids/server.pid'"
   conf+="\n# ok, this is hard now"
@@ -224,30 +263,34 @@ function create_file_start
   conf+="\n  kill -TERM \"cat \$pid\""
   conf+="\n  rm \$pid"
   conf+="\nfi"
-  conf+="\nbundle exec ruby script/rails server webrick -e ${redmine_env[1]} "
-  conf+="-b ${redmine_host[1]}} -p ${redmine_port[1]}} -d > redmine.log"
+  conf+="\nbundle exec ruby script/rails server webrick "
+  conf+="-e ${redmine_user[1]}_${redmine_env[1]} "
+  conf+="-b ${redmine_host[1]} -p ${redmine_port[1]} -d > redmine.log"
 
   # Création du fichier
   file_start=start_redmine_${redmine_user[1]}.sh
-  echo "Création du fichier de démarrage => ${file_start}"
+  ${TEST[1]} &&
+  echo "Création du fichier de démarrage => ${file_start}" &&
+  echo "Appuyer sur 'Entrée' pour continuer !"
   echo -e "${conf}" > $file_start
-  chmod +x file_start
+  chmod +x $file_start
 }
 
 function create_redmine_user
 {
   # Crée l'instance / le compte système d'exécution de l'application
-  clear
+
   local log='create_redmine_user.log'
-  echo -n "Création du compte système ${redmine_user[1]}. "
+  ${TEST[1]} &&
+  echo -n "Création du compte système ${redmine_user[1]}. " &&
   echo "Journal des erreurs ${log}"
   # Le compte d'instance ne doit pas être root
   id ${redmine_user[1]}
   [ $? -ne 0 ] &&
   [ $UID -eq 0 ] && [ ${redmine_user[1]} != "root" ] &&
-  adduser --disabled-password --shell='/bin/bash' ${redmine_user[1]} 2> $log
+  adduser --disabled-password --shell='/bin/bash' ${redmine_user[1]} >$log 2>&1
   [ $? = 1 ] && return 1
-  rm $log
+  [ -e $log ] && rm $log
   return 0
 }
 
@@ -257,6 +300,7 @@ function direct_mode
 {
   # Exécute les commandes passées en argument au regard des options
 
+  echo "Fonction direct_mode : $@"
   _error=0
   # Teste si les informations de connexion au SGDB sont définies
   if [ "${db_host[1]}" = "${noDefine}" ] ||
@@ -264,20 +308,22 @@ function direct_mode
   then
     msg="\nL'hôte du SGDB et le mot passe du compte ${db_admin[1]} "
     msg+="doivent être définis !\n"
+    echo -e "${msg}"
     return 1
   fi
-  echo "Ensemble des paramètres $@" ; read
   # Exécute les commandes passées en arguments
-  echo "fonctions $@" ; read
-  for cmd in $@ ; do
-    echo "fonction $cmd" ; read
+  echo "Liste des fonctions en mode direct : $@"
+  for cmd in "${@}" ; do
+    echo "commande ${cmd}"
     # Vérifier que la méthode appelée est autorisée
     for c in "${direct_function[@]}" ; do
-      
+      echo "Vérification commande ${cmd} = ${c}"
       if [ $cmd = $c ] ; then
+        echo "Commande {$cmd} validée" ; read
         _error=0
-        break
+        break 1
       else
+        echo "Commande {$cmd} non validée"
         _error=1
       fi
     done
@@ -285,9 +331,11 @@ function direct_mode
       # Exécution de la méthode autorisée
       eval "${cmd}"
     fi
-    [ "${_error}" = 1 ] &&
-    echo "Le méthode '${cmd}' est non autorisée en mode direct." &&
-    return 1
+    if [ "${_error}" = 1 ] ; then
+      echo "Le méthode '${cmd}' est non autorisée en mode direct."
+      read
+      return 1
+    fi
   done
   return 0
 }
@@ -298,16 +346,20 @@ function installation
   # Dépendances :
   #   - Fonctions : install_dependances, install_postgresql-client,
   #                 create_redmine_user, direct_mode, $direct_function
-
+echo "fonction installation : ${USER} = ${redmine_user[1]}"
   if [ "${USER}" = root ] ; then
     # Première phase en tant que root
-    echo "Lancement de l'installation sous le compte root."
-    # install_dependances &&
-    # install_postgresql-client &&
+    ${TEST[1]} &&
+    echo "Lancement de la première phase d'installation sous le compte root."
+    cd ~
+    install_dependances &&
+    install_postgresql-client &&
     create_redmine_user
     manage_database
     # Deuxième phase dans l'environement du compte redmine_user
-    echo "Poursuite de l'installation sous le compte ${redmine_user[1]}"
+    ${TEST[1]} &&
+    echo "Poursuite de l'installation sous le compte ${redmine_user[1]}" &&
+    sleep 1
     cd /home/${redmine_user[1]}
     # Préparation des options à passer dans l'appel récursif du script
     [ ${proxy_url[1]} ] && OPTS="-P ${proxy_url[1]} " || OPTS=""
@@ -315,18 +367,25 @@ function installation
     OPTS+="-s ${redmine_port[1]} -t ${redmine_host[1]} -a ${db_adapter[1]} "
     OPTS+="-d ${db_name[1]} -h ${db_host[1]} -p ${db_port[1]} "
     OPTS+="-u ${db_user[1]} -w ${db_user_password[1]} "
-    OPTS+="-U ${db_admin[1]} -W ${db_admin_password[1]}"
+    OPTS+="-U ${db_admin[1]} -W ${db_admin_password[1]} "
+    ${TEST[1]} && OPTS+="-T"
     # Préparation des arguments à passer dans l'appel récursif du script
     ARGS=${direct_function[@]}
     # Appel récursif au script sous le compte redmine_user
-    echo "options arguments : su ${redmine_user[1]} -c ${0} ${OPTS} ${ARGS}" ; read
     su ${redmine_user[1]} -c "${PATH_THIS} ${OPTS} ${ARGS}" 2> error.log
+    # Lancement de l'instance redmine
+    cd "/home/${redmine_user[1]}/redmine"
+    su ${redmine_user[1]} -c "${file_start}"
   elif [ "${USER}" = "${redmine_user[1]}" ] ; then
-    echo "Deuxième phase d'installation dans le mode direct récursif" ; read
+    ${TEST[1]} &&
+    echo "Deuxième phase d'installation dans le mode direct récursif" &&
+    sleep 1
     # Deuxième phase d'installation dans le mode direct récursif
     direct_mode $@
   else
-    echo "Compte utilisateur ${redmine_user[1]} non autorisé à lancer le script."
+    msg="Compte utilisateur ${redmine_user[1]} "
+    msg+="non autorisé à lancer le script."
+    echo "${msg}" && sleep 1
     return 1
   fi
   
@@ -347,10 +406,11 @@ function installation
 function __init_var
 {
   # Initialise les variables globales
-  PATH_THIS=/opt/${0#./}
-  PATH_pgManage=/opt/pgmanage.sh
+  PATH_SRC='/opt'
+  PATH_THIS=${PATH_SRC}/${0#./}  # URI du script
+  PATH_pgManage=${PATH_SRC}/pgmanage.sh
   # Export et initialisation des variables globales
-  noDefine='Non Défini'
+  noDefine='NonDefini'
   proxy_url[1]=${proxy_url[0]:=''}
   redmine_env[1]=${redmine_env[0]:=$noDefine}
   redmine_user[1]=${redmine_user[0]:=$noDefine}
@@ -365,7 +425,7 @@ function __init_var
   db_admin[1]=${db_admin[0]:=$noDefine}
   db_admin_password[1]=${db_admin_password[0]:=$noDefine}
   TEST[1]=${TEST[0]:=false} # Lancement en mode DEBUG et VERBOSE
-  _exit=0     # sortie de script
+  _exit=0     # variable gérant la sortie du script
   
   # Liste des fonctions autorisées en mode direct
   direct_function=("config_proxy" "wget_redmine" "config_database_connection" \
@@ -392,7 +452,7 @@ function installation_menu
   # Menu d'installation de l'application
   # Définit les propriétés de l'installation et de l'applications
 
-  clear
+  # clear
 
   local opt1="Chaîne de connexion au Proxy          => ${proxy_url[1]},"
   local opt2="Environement d'éxecution  redmine     => ${redmine_env[1]}",
@@ -474,7 +534,7 @@ function installation_menu
         redmine_port[1]=${r:=$v}
         return 0 ;;
       "$opt11" )
-        r=${redmine_host[1]}
+        v=${redmine_host[1]}
         echo -n "Définissez l'IP de l'application (${v}) : "
         read r
         redmine_host[1]=${r:=$v}
@@ -495,6 +555,7 @@ function execution_mode
   # Dépendances :
   #   - Fonctions : installation_menu, installation
 
+  # clear
   # Initialisation des variables
   __init_var
   local _interMode=0
@@ -503,7 +564,7 @@ function execution_mode
   
   # Traitement des options de la ligne de commande
   OPTIND=0
-  while getopts ":P:e:r:s:t:a:d:h:p:u:w:U:W:TiH-:" opt ; do
+  while getopts ":P:e:r:s:t:a:d:h:p:u:w:U:W:iTH-:" opt ; do
     case $opt in
       P ) proxy_url[0]=$OPTARG ;;
       e ) redmine_env[0]=$OPTARG ;;
@@ -519,7 +580,7 @@ function execution_mode
       U ) db_admin[0]=$OPTARG ;;
       W ) db_admin_password[0]=$OPTARG ;;
       i ) _interMode=1 ; echo 'Mode interactif' ;;
-      T ) TEST[0]=true
+      T ) TEST[0]=true ;;
       H ) _help=1 ;;
     esac
   done
@@ -544,6 +605,7 @@ function execution_mode
     installation $@ || return 1
   fi
 }
-echo "Lancement du script sous le compte ${USER}" ; read
+${TEST[1]} &&
+echo "Lancement du script sous le compte ${USER}"
 echo "Paramètres passés $@" ; read
 execution_mode $@

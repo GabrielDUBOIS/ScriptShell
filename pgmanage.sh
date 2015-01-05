@@ -416,10 +416,10 @@ function direct_mode
   # Exécute les commandes passées en arguments
   for cmd in $@ ; do
     _error=0
-    echo "Test de la commende $cmd"
+    echo "Test de la commande $cmd"
     # Vérifier que la méthode appelée est autorisée
     for c in "${direct_function[@]}" ; do
-      echo "avec ${c}" ; read 
+      echo "avec ${c}"
       if [ "${cmd}" = "${c}" ] ; then
         _error=0
         break 1
@@ -436,6 +436,7 @@ function direct_mode
       return 1
     fi
   done
+  _error=0
   return 0
 }
 

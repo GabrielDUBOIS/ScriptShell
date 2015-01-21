@@ -1,0 +1,625 @@
+#! /bin/bash
+
+### Script de sauvegarde et restauration des bases de données ###
+# Infra : DRCPN/Lumière
+###
+
+set -u
+
+declare -i NBRS
+declare -i codeError
+
+# DPATH='./'
+DPATH="/var/spool/sqldump/"
+# DUMPLIST="../data/dumplist"     # liste des SGDB et bases à sauvegarder
+CPATH="/opt/shscript/dumpsql/"
+LPATH="${CPATH}log/"
+DUMPLIST="${CPATH}data/dumplist.d/dumplist"
+
+OLDIFS=$IFS
+
+### Initialisation ###
+function __init__
+{
+  unset vmName ; vmName=''       # nom de la machine virtuelle
+  unset sgdbType ; sgdbType=''   # postgresql ou mysql
+  unset dbName   ; dbName=''     # bases à sauvegarder ; '*' pour toutes
+  unset userLogin ; userLogin='' # compte de sauvegarde du SGDB
+  unset userMdp   ; userMdp=''   # mot de passe du compte de sauvegarde
+  unset retention ; retention='29' # durée de rétention des dumps
+  pg_vmPort='5432'   # vmPort par défaut de postgresql
+  my_vmPort='3304'   # vmPort par défaut de mysql
+  NBRS=0             # nombre de serveurs à sauvegarder
+  fileBck=''
+  choiceVm=''     # Sélection d'une ressource (VM ou serveur)
+  choiceDb=''     # Sélection d'une base de données
+  choiceDmp=''    # Sélection d'un point de sauvegarde
+}
+
+function set_dirBck
+{ # Création du répertoire de sauvegarde
+  dirBck=${DPATH}${vmName[$1]}_${vmIP[$1]}
+  [ ! -d $dirBck ] && mkdir $dirBck
+}
+
+function set_logFile
+{
+  logFile="$dirBck/${1}_$(date '+%Y%m%d').log"
+  [ ! -e $logFile ] && touch $logFile
+}
+
+function set_fileBck
+{ # Définition du fichier / répertoire de sauvegarde
+  [ ! -d $dirBck ] && set_dirBck $1
+  fileBck="$dirBck/"
+  fileBck+="${sgdbType[$1]:0:2}_${dbName[$1]}_$(date '+%Y%m%d-%H%M%S')"
+}
+
+function f_init
+{ # Initialisation des variables d'environnement
+  # Définition du dossier de sauvegarde
+  set_dirBck $1
+  # Définition de la sortie du DUMP
+  set_fileBck $1
+}
+################################################################################
+########################### FONCTIONS DE RETENTION #############################
+function erase_dump_file
+{ # Suppression des dumps et log d'un dossier de sauvegarde
+  set_dirBck $1
+  filePath="${LPATH}filedumperase_$(date '+%Y%m%d-%H%M%S')"
+  filePath+="_${sgdbType[$1]:0:2}_${dbName[$1]}.log"
+  instrStr=""
+  instrStr="(find $dirBck -maxdepth 1 -ctime +${retention} "
+  instrStr+="| tee ${filePath}) > /dev/null 2>&1 | xargs rm -Rf" 
+  [ -d $dirBck ] && eval $instrStr
+  [ ! -s "$filePath" ] && rm $filePath
+}
+
+function erase_log_file
+{ # Suppression des fichiers de log des suppressions des dumps et leurs logs
+  filePath="${LPATH}filelogerase_$(date '+%Y%m%d-%H%M%S').log"
+  instrStr=""
+  instrStr="(find ${LPATH} -maxdepth 1 -ctime +${retention} "
+  instrStr+="| tee ${filePath}) > /dev/null 2>&1 | xargs rm -Rf" 
+  [ -d $LAPTH ] && eval $instrStr
+  [ ! -s "$filePath" ] && rm $filePath
+}
+
+################################################################################
+##################### FONCTIONS DE SAUVEGARDE POSTGRESQL #######################
+function f_pgdump
+{ # Sauvegarde d'une base de données
+  function f_pgArgumentStr
+  { # définition de la chaîne de connection et des options du DUMP
+    # informations
+    pgStrConnection="--host=${vmIP[$1]} --port=${vmPort[$1]} "
+    pgStrConnection+="--username=${userLogin[$1]}"
+    # Options
+    pgStrOptions="--file=${fileBck} "
+    pgStrOptions+="-Fc -Fd --oids --verbose"
+  }
+
+  function f_pgDumpStr
+  { # Définition de la chaîne de commande
+    f_init $1
+    # Initialisation de la chaine de connection
+    f_pgArgumentStr $1
+    # Création du journal des opérations
+    set_logFile 'dump'
+    # Construction de la chaîne de Commande
+    dumpInstruction="pg_dump $pgStrConnection $pgStrOptions ${dbName[$1]} "
+    dumpInstruction+=">>$logFile 2>&1"
+  }
+  # Définition de la chaîne de commande
+  f_pgDumpStr $1
+  # Mise en place des éléments de connection le fichier $PGPASSFILE
+  [ ! -e $PGPASSFILE ] && touch $PGPASSFILE || (echo '' > $PGPASSFILE)
+  chmod 0600 $PGPASSFILE
+  echo "${vmIP[$1]}:${vmPort[$1]}:${dbName[$1]}:${userLogin[$1]}:${userMdp[$1]}" \
+  >> $PGPASSFILE
+  # Exécution de la commande et journalisation
+  echo "Début de sauvegarde de la base ${dbName[$1]} à $(date '+%Y%m%d-%H%M%S')" \
+    >> $logFile
+  eval $dumpInstruction &&
+  echo "Fin de sauvegarde de la base ${dbName[$1]} à $(date '+%Y%m%d-%H%M%S')" \
+  >> $logFile &&
+  [ -e $PGPASSFILE ] && rm $PGPASSFILE &&
+  return 0
+  echo "Échec de la sauvegarde de la base ${dbName[$1]} à $(date '+%Y%m%d-%H%M%S')" \
+  >> $logFile
+  [ -e $PGPASSFILE ] && rm $PGPASSFILE
+  return 1
+}
+#################### FONCTIONS DE RESTAURATION POSTGRESQL ######################
+function f_pgrestore
+{
+  function f_pgArgumentStr
+  { # définition de la chaîne de connection et des options du DUMP
+    # informations
+    pgStrConnection="--host=${vmIP} --port=${vmPort} --dbname=${dbName} "
+    pgStrConnection+="--username=${userLogin}"
+    # Options
+    pgStrOptions="--verbose --clean"
+  }
+  function f_pgRestoreStr
+  { # Définition de la chaîne de commande
+    f_init 0
+    # Initialisation de la chaine de connection
+    f_pgArgumentStr
+    # Création du journal des opérations
+    set_logFile 'restore'
+    # Construction de la chaîne de Commande
+    restoreInstruction="pg_restore $pgStrConnection $pgStrOptions ${aFile} "
+    restoreInstruction+=">>$logFile 2>&1"
+  }
+  # Définition de la chaîne de commande
+  local aFile="${DPATH}${choiceVm}/${choiceDmp}"
+  f_pgRestoreStr
+  # Mise en place des éléments de connection dans le fichier $PGPASSFILE
+  [ ! -e $PGPASSFILE ] && touch $PGPASSFILE || (echo '' > $PGPASSFILE)
+  chmod 0600 $PGPASSFILE
+  echo "${vmIP}:${vmPort}:${dbName}:${userLogin}:${userMdp}" \
+  >> $PGPASSFILE
+  # Exécution de la commande et journalisation
+  echo "Début de restauration de la base ${dbName} à $(date '+%Y%m%d-%H%M%S')" \
+    >> $logFile
+  echo "Retauration $restoreInstruction"
+  eval $restoreInstruction &&
+  echo "Fin de la restauration de la base ${dbName} à $(date '+%Y%m%d-%H%M%S')" \
+  >> $logFile &&
+  [ -e $PGPASSFILE ] && rm $PGPASSFILE &&
+  return 0
+  echo "Échec de la restauration de la base ${dbName} à $(date '+%Y%m%d-%H%M%S')" \
+  >> $logFile
+  [ -e $PGPASSFILE ] && rm $PGPASSFILE
+  return 1
+}
+################################################################################
+######################## FONCTIONS DE SAUVEGARDE MYSQL #########################
+function f_mydump
+{ # Sauvegarde d'une base de données
+  function f_myArgumentStr
+  { # définition de la chaîne de connection et des options du DUMP
+    strConnection="--host=${vmIP[$1]} --port=${vmPort[$1]} "
+    strConnection+="--user=${userLogin[$1]} --password=${userMdp[$1]}"
+    strOptions="--opt --verbose"
+  }
+
+  function f_myDumpStr
+  { # Définition de la chaîne de commande
+    f_init $1
+    fileBck+='.sql'
+    # Initialisation de la chaine de connection
+    f_myArgumentStr $1
+    # Création du journal des opérations
+    set_logFile 'dump'
+    # Construction de la chaîne de Commande
+    dumpInstruction="(mysqldump $strConnection $strOptions ${dbName[$1]} "
+    dumpInstruction+=" | gzip > ${fileBck}.gz)"
+    dumpInstruction+=">>$logFile 2>&1"
+  }
+  # Définition de la chaîne de commande
+  f_myDumpStr $1
+  # Exécution de la commande et journalisation
+  echo "Début de sauvegarde de la base ${dbName[$1]} à $(date '+%Y%m%d-%H%M%S')" \
+    >> $logFile
+  eval $dumpInstruction &&
+  echo "Fin de sauvegarde de la base ${dbName[$1]} à $(date '+%Y%m%d-%H%M%S')" \
+  >> $logFile &&
+  return 0
+  echo "Échec de la sauvegarde de la base ${dbName[$1]}à $(date '+%Y%m%d-%H%M%S')" \
+  >> $logFile
+  return 1
+}
+####################### FONCTIONS DE RESTAURATION MYSQL ########################
+function f_myrestore
+{
+  function f_myArgumentStr
+  { # définition de la chaîne de connection et des options du DUMP
+    strConnection="--host=${vmIP} --port=${vmPort} "
+    strConnection+="--user=${userLogin} --password=${userMdp}"
+    strOptions="--verbose"
+  }
+  function f_myRestoreStr
+  { # Définition de la chaîne de commande
+    f_init 0
+    # Initialisation de la chaine de connection
+    f_myArgumentStr
+    # Création du journal des opérations
+    set_logFile 'restore'
+    # Construction de la chaîne de Commande
+    echo "DATABASE $choiceDb"
+    restoreInstruction="(mysql $strConnection $strOptions ${choiceDb}"
+    restoreInstruction+="< ${aFile%.gz}) "
+    restoreInstruction+=">>$logFile 2>&1"
+  }
+  # Définition de la chaîne de commande
+  local aFile="${DPATH}${choiceVm}/${choiceDmp}"
+  f_myRestoreStr
+  # Décompression de l'archive
+  (gunzip "${aFile}")
+  # Exécution de la commande et journalisation
+  echo "Début de restauration de la base ${dbName} à $(date '+%Y%m%d-%H%M%S')" \
+    >> $logFile
+  echo "$restoreInstruction"
+  eval $restoreInstruction &&
+  echo "Fin de restauration de la base ${dbName} à $(date '+%Y%m%d-%H%M%S')" \
+  >> $logFile && gzip "${aFile%.gz}" && rm  "${aFile%.gz}"
+  return 0
+  echo "Échec de restauration de la base ${dbName}à $(date '+%Y%m%d-%H%M%S')" \
+  >> $logFile
+  return 1
+}
+################################################################################
+############################## MODES DE SAUVEGARDE #############################
+
+function f_dump
+{ # Fonction de sélection et d'appel des fonctions de sauvegarde
+  # fonctions d'adaptation de l'environement aux différents modes
+  function env_mod_auto
+  { # Initialisation de l'environement pour le mode automatique
+    IFS=':'
+    while read vmName[$NBRS] vmIP[$NBRS] vmPort[$NBRS] sgdbType[$NBRS] \
+               dbName[$NBRS] userLogin[$NBRS] userMdp[$NBRS] retention[$NBRS]
+    do
+      NBRS=$NBRS+1
+    done < $DUMPLIST
+    IFS=$OLDIFS
+  }
+  function env_mod_direct
+  { # Initialisation de l'environement pour le mode direct
+  : ${vmName:=noname}
+    vmName=$_vmName ; vmIP=$_vmIP ; vmPort=$_vmPort ; sgdbType=$_sgdbType ; \
+    dbName=$_dbName ; userLogin=$_userLogin ; userMdp=$_userMdp; \
+    NBRS=1 ; fileBck=$_fileBck
+  }
+  function env_mod_inter
+  { # Initialisation de l'environement pour le mode interactif
+    local selection=$1
+    IFS=":"
+    read vmName vmIP vmPort sgdbType dbName userLogin userMdp retention <<FIN
+$selection
+FIN
+    IFS=$OLDIFS
+    NBRS=1
+  }
+
+  # Choix du mode automatique
+  [ $1 = 'auto' ] && env_mod_auto
+  # Choix du mode direct
+  [ $1 = 'direct' ] && env_mod_direct
+  # Choix du mode interactif
+  [ $1 = 'inter' ] && env_mod_inter $2
+  # Invocation des fonctions de sauvegarde
+  for i in $(seq $NBRS)
+  do
+    j=$((i-1))
+    case ${sgdbType[j]} in
+      postgresql)
+        export PGPASSFILE="./.pgpass"
+        : ${vmPort:=$pg_vmPort}
+        f_pgdump $j && \
+        [ $1 = 'auto' ] && erase_dump_file $j ;;
+      mysql)
+        : ${vmPort:=$my_vmPort}
+        f_mydump $j && \
+        [ $1 = 'auto' ] && erase_dump_file $j ;;
+      *) ;;
+    esac
+  done
+  # Purge des fichiers de log des rétentions
+  erase_log_file
+}
+
+################################################################################
+############################## MODES DE RESTAURATION ###########################
+function f_restore
+{
+  function env_mod_inter
+  { # Initialisation de l'environement pour le mode interactif
+    local selection=$1
+    IFS=":"
+    read vmName vmIP vmPort sgdbType dbName userLogin userMdp retention <<FIN
+$selection
+FIN
+    IFS=$OLDIFS
+    NBRS=1
+  }
+  # Choix du mode automatique
+  #[ $1 = 'auto' ] && env_mod_auto
+  # Choix du mode direct
+  #[ $1 = 'direct' ] && env_mod_direct
+  # Choix du mode interactif
+  [ $1 = 'inter' ] && env_mod_inter $2
+  # Invocation des fonctions de sauvegarde
+  case ${sgdbType} in
+    postgresql)
+      export PGPASSFILE="./.pgpass"
+      : ${vmPort:=$pg_vmPort}
+      f_pgrestore ;;
+    mysql)
+      : ${vmPort:=$my_vmPort}
+      f_myrestore ;;
+    *) ;;
+  esac
+}
+################################################################################
+########################### FONCTIONS D'INTROSPECTION ##########################
+function list_select_vm
+{ # Liste les vm sauvegardées
+  choiceVm=''
+  export DPATH
+  # Établir la liste
+  local a=$(find $DPATH -type d -maxdepth 1 -nowarn 2>/dev/null | \
+            sed -e 's!'"$DPATH"'!!g' | xargs)
+  local opt1="Retour"
+  local options="$opt1 $a"
+  # Mise en place du menu de sélection
+  echo "******************************************"
+  echo "Sélection de la ressource :"
+  echo ""
+  PS3="Choix : "
+  select vm in $options
+  do
+    case $vm in
+      "$opt1" ) choiceVm='' && return 0 ;;
+      * ) choiceVm=$vm && return 0 ;;
+    esac
+  done
+}
+
+function list_select_base
+{ # Liste les bases de données de la ressource
+  choiceDb=''
+  echo 'SELECT BASE'
+  [ -z "${choiceVm}" ] && list_select_vm && [ -z "${choiceVm}" ] && return 0
+  cat $DUMPLIST | grep "^${choiceVm%_*}.${choiceVm#*_}" > "${DUMPLIST%/*}/lsb.tmp"
+  local i=0
+  IFS=':' ;
+  while read vmName[$i] vmIP[$i] vmPort[$i] sgdbType[$i] \
+             dbName[$i] userLogin[$i] userMdp[$i]
+  do
+    i+=1
+  done < "${DUMPLIST%/*}/lsb.tmp"
+  IFS=$OLDIFS
+  unset dbName[$i]
+  rm "${DUMPLIST%/*}/lsb.tmp"
+  local opt1="Retour"
+  # Mise en place du menu de sélection
+  echo "******************************************"
+  echo "Ressource : $choiceVm"
+  echo "Sélection de la base de données :"
+  echo ""
+  PS3="Choix : "
+  select base in $opt1 "${dbName[@]}"
+  do
+    case $base in
+      "$opt1" ) choiceDb='' ; return 0 ;;
+      * ) choiceDb=$base ; return 0 ;;
+    esac
+  done
+}
+
+function list_select_dmp
+{ # liste des points de sauvegardes
+  choiceDmp=''
+  echo 'SELECT DMP'
+  # Choisir un ressource si inexistante (VM ou serveur)
+  [ -z "${choiceDb}" ] && list_select_base && [ -z "${choiceDb}" ] && return 0
+  local my=''
+  local po=''
+  local opt1="Retour"
+  export DPATH
+  # Établir les listes pour chaque type de SGDB
+  my=$(find ${DPATH}${choiceVm}/my_${choiceDb}_* -type f -maxdepth 1 -nowarn 2>/dev/null | \
+       sed -e 's!'"${DPATH}${choiceVm}"'/!!g' | xargs)
+  po=$(find ${DPATH}${choiceVm}/po_${choiceDb}_* -type d -maxdepth 1 -nowarn 2>/dev/null | \
+       sed -e 's!'"${DPATH}${choiceVm}"'/!!g' | xargs)
+  # Mise en place du menu de sélection
+  echo "******************************************"
+  echo "Ressource : $choiceVm"
+  echo "Selection du point de sauvegarde :"
+  echo ""
+  PS3="Choix : "
+  # La ressource contient-elle des sauvegardes MySQL
+  [ ${#my} -gt 0 ] && local options="$opt1 $my" && \
+  select dmp in $options
+  do
+    case $dmp in
+      "$opt1" ) choiceDmp='' ; return 1 ;;
+      *) choiceDmp=$dmp && return 0;;
+    esac
+  done
+  # La ressource contient-elle des sauvegardes PostgreSQL
+  [ ${#po} -gt 0 ] && local options="$opt1 $po" && \
+  select dmp in $options
+  do
+    case $dmp in
+      "$opt1" ) choiceDmp='' && return 1 ;;
+      *) choiceDmp=$dmp && return 0 ;;
+    esac
+  done
+}
+################################################################################
+############################ FONCTIONS DE COMMANDES ############################
+function ressource_list
+{ # Sélection la ressource base à traiter depuis la liste DUMPLIST
+  echo "CHOICE RESSOURCE"
+  [ $1 = 'dump' ] && list_select_base  && [ -z "${choiceDb}" ] && return 1
+  [ $1 = 'restore' ] && list_select_dmp  && [ -z "${choiceDmp}" ] && return 1
+  choiceIP=${choiceVm#*_}
+  selection=$(cat $DUMPLIST | grep ${choiceVm%_*}.${choiceVm#*_}.*${choiceDb})
+  [ ${#selection} -eq 0 ] && \
+  { codeError=1;echo "Ressource absente du fichier $DUMPLIST";return 1; }
+  return 0
+}
+
+function save_list
+{ # Gère la sauvegarde d'une ressource
+  ressource_list 'dump' && f_dump 'inter' $selection  && return 0
+  return 1
+}
+
+function restore_list
+{ # Gère la restauration d'une ressource
+  ressource_list 'restore' && f_restore 'inter' $selection  && return 0
+  return 1
+}
+################################################################################
+############################# FONCTIONS D'INTERFACE ############################
+function mode_interactive
+{
+  codeError=0
+  jumpout=0
+  function menu_restore
+  {
+    local opt1="La liste des serveurs"
+    local opt2="Une recherche (non disponible)"
+    local opt3="Un fichier de sauvegarde (non disponible)"
+    local opt4="Affiche l'aide"
+    local opt5="Retour"
+    echo "******************************************"
+    echo "Restauration depuis :"
+    echo ""
+    menuRestore=("$opt1" "$opt2" "$opt3" "$opt4" "$opt5")
+    PS3="Choix :"
+    select restore in "${menuRestore[@]}"
+    do
+      case $restore in
+        "$opt1" ) restore_list && return 0 || return 1;;
+        "$opt2" ) restore_search && return 0 ;;
+        "$opt3" ) restore_file && return 0 ;;
+        "$opt4" ) menu_restore_help && return 0 ;;
+        "$opt5" ) return 1 ;;
+      esac
+    done
+  }
+  function menu_save
+  {
+    local opt1="La liste des serveurs"
+    local opt2="Une recherche (non disponible)"
+    local opt3="Une liste de sauvegarde (non disponible)"
+    local opt4="Une saisie guidée des arguments (non disponible)"
+    local opt5="Affiche l'aide"
+    local opt6="Retour"
+    echo "******************************************"
+    echo "Sauvegarde depuis :"
+    echo ""
+    menuSave=("$opt1" "$opt2" "$opt3" "$opt4" "$opt5")
+    PS3="Choix :"
+    select save in "${menuSave[@]}"
+    do
+      case $save in
+        "$opt1" ) save_list && return 0 || return 1;;
+        "$opt2" ) save_search && return 0 ;;
+        "$opt3" ) save_file && return 0 ;;
+        "$opt4" ) save_onscratch && return 0 ;;
+        "$opt5" ) menu_save_help && return 0 ;;
+        "$opt6" ) return 1 ;;
+      esac
+    done
+  }
+  function menu_principal
+  {
+    local opt1="Sauvegarde"
+    local opt2="Restauration"
+    local opt3="Rétention (non disponible)"
+    local opt4="Sortie"
+    local opt5="Aide"
+    echo "******************************************"
+    echo "Menu principal :"
+    echo ""
+    menuPrincipal=("$opt1" "$opt2" "$opt3" "$opt4" "$opt5")
+    select principal in "${menuPrincipal[@]}"
+    do
+     case $principal in
+       "$opt1" ) menu_save && return 0  || return 1 ;;
+       "$opt2" ) menu_restore && return 0 || return 1 ;;
+       "$opt3" ) menu_retention && return 0 || return 1 ;;
+       "$opt4" ) jumpout=1; return 0 ;;
+       "$opt5" ) menu_principal_help && return 0 ;;
+     esac
+    done
+   }
+  while [ "${jumpout}" = 0 ]
+  do
+    __init__; menu_principal;
+  done
+  return 0
+}
+
+function mode_selection
+{ # Fonctionnement en ligne de commande avec passage d'options
+  _vmName=''
+  _vmIP=''
+  _vmPort=''
+  _sgdbType=''
+  _dbName=''
+  _userLogin=''
+  _userMdp=''
+  _fileBck=''
+  local _interMode=0
+  local _autoMode=0
+  local _directMode=0
+  local _help
+  local _helpMessage="Utilisez l'option 'H' pour accéder à l'aide"
+  local codeError=0
+  function test_directMode
+  { # Test des arguments en ligne de commande
+    # Mauvaise IP
+    codeError = 0
+    [ ! $_vmIP ] && (\
+    echo "Veuillez fournir l'IP du serveur." ; codeError=1;) ||
+    ! (ping -c 1 -w 2 $_vmIP > /dev/null 2>&1) && (\
+    echo "l'IP $_vmIP est injoignable.";) && codeError=1
+    # Support du SGDB
+    [ ! $_sgdbType = postgresql ] && [ ! $_sgdbType = mysql ] && (\
+    echo "Le type du SGDB fournit est non géré";) && codeError=1
+    # Manque le nom de la base de données
+    [ ! $_dbName ] && (\
+    echo "Veuillez fournir le nom de la base de données." ;) && codeError=1
+    # Manque des informations d'identification
+    ([ ! $_userLogin ] || [ ! $_userMdp ]) && (\
+    echo "Veuillez fournir les informations d'identification." ;) && codeError=1
+    [ $codeError = 1 ] && echo $_helpMessage ;
+  }
+  # Parcours des options de la ligne de commande
+  OPTIND=0
+  while getopts ":m:h:p:t:d:u:W:f:ial:H-:" opt ; do
+    case $opt in
+      m ) _vmName=$OPTARG ;;
+      h ) _vmIP=$OPTARG ;;
+      p ) _vmPort=$OPTARG ;;
+      t ) _sgdbType=$OPTARG ;;
+      d ) _dbName=$OPTARG ;;
+      u ) _userLogin=$OPTARG ;;
+      W ) _userMdp=$OPTARG ;;
+      f ) _filebck=$OPTARG ;;
+      i ) _interMode=1 ; echo 'mode interactif';;
+      l ) [ $OPTARG ] && DUMPLIST=$OPTARG ;;
+      a ) _autoMode=1 ;;
+      H ) _help=1 ;;
+    esac
+  done
+  shift $((OPTIND-1))
+  ### Contrôle de la validité des options ###
+  # Incompatibilité des modes
+  [ $_interMode = 1 ] && [ $_autoMode = 1 ] && (\
+  echo "Les options 'i' et 'a' sont incompatibles entre elles." ; \
+  echo $_helpMessage;) && codeError=1
+  # Activation conditionnelle du mode direct
+  [ $_interMode = 0 ] && [ $_autoMode = 0 ] && _directMode=1
+  [ $_directMode = 1 ] && test_directMode
+  ### Test de la validation du contrôle
+  [ $codeError = 1 ] && return 1
+  ### Lancement
+  [ $_autoMode = 1 ] && f_dump 'auto' && return 0
+  [ $_directMode = 1 ] && f_dump 'direct' && return 0
+  [ $_interMode = 1 ] && mode_interactive && return 0
+  return 1
+}
+################################################################################
+################################## LANCEMENT ###################################
+__init__
+mode_selection $@

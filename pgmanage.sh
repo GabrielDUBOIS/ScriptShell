@@ -20,7 +20,8 @@ function set_pgpassfile
   touch $PGPASSFILE
   chmod 0600 $PGPASSFILE
   export PGPASSFILE
-  echo "${db_host[1]}:5432:*:postgres:${db_admin_password[1]}" > $PGPASSFILE
+  echo "${db_host[1]}:5432:*:${db_admin[1]}:${db_admin_password[1]}" \
+  > $PGPASSFILE
   return 0
 }
 
@@ -373,7 +374,7 @@ function __init_var
   # Initialise les variables globales de travail *[1]
 
   # Valeurs par default des propriétés
-  noDefine='Non Défini'
+  noDefine='NonDefini'
   db_host[1]=${db_host[0]:=$noDefine}
   db_port[1]=${db_port[0]:='5432'}
   db_name[1]=${db_name[0]:=$noDefine}
@@ -416,10 +417,8 @@ function direct_mode
   # Exécute les commandes passées en arguments
   for cmd in $@ ; do
     _error=0
-    echo "Test de la commande $cmd"
     # Vérifier que la méthode appelée est autorisée
     for c in "${direct_function[@]}" ; do
-      echo "avec ${c}"
       if [ "${cmd}" = "${c}" ] ; then
         _error=0
         break 1
@@ -748,7 +747,7 @@ function execution_mode
       d) db_name[0]=$OPTARG ;;
       u) db_user[0]=$OPTARG ;;
       w) db_user_password[0]=$OPTARG ;;
-      U) db_admin[0]=$OPTARGS ;;
+      U) db_admin[0]=$OPTARG ;;
       W) db_admin_password[0]=$OPTARG ;;
       i) _interMode=1 ; echo 'Mode interactif' ;;
       H) _help=1 ;;
